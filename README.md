@@ -1,22 +1,4 @@
-# DirectOutput Unified R3++ has moved back to the official DirectOutput repository
-
-As of July 2025, my work on the "Grand Unified" edition of DirectOutput has
-moved back to the official DirectOutput github repository at
-[github.com/DirectOutput/DirectOutput](https://github.com/DirectOutput/DirectOutput).
-
-<b>For the latest source code, refer to the [main repos](https://github.com/DirectOutput/DirectOutput).
-
-<b>Please submit any future Pull Requests (PRs) through the [main repos](https://github.com/DirectOutput/DirectOutput)
-rather than this fork.</b>
-
-I plan to keep this repository online indefinitely for the sake of other
-sites that link here, but if you're maintaining a site that links here,
-please consider updating your site to point back to the main DirectOutput
-repos instead.  The README material below reflects the last work I did
-in June 2025 and might not be up to date.
-
-
-## DirectOutput Framework R3++, Grand Unified Edition
+# DirectOutput Framework R3++, Grand Unified Edition
 
 DirectOutput is an add-in for Visual Pinball and other programs that
 provides software control over external feedback devices in a virtual
