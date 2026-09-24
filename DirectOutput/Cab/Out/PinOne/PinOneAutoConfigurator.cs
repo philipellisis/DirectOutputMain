@@ -58,7 +58,7 @@ namespace DirectOutput.Cab.Out.PinOne
         // Old (pre-HID-migration) PinOne firmware's VID/PID. That firmware
         // only exposes a USB CDC serial port - no HID vendor channel exists
         // on it, so it's found by looking up its COM port, not by HID scan.
-        private const string LegacyHardwareId = "VID_0E8F&PID_9208";
+        private const string LegacyHardwareId = "VID_0E8F&PID_9207";
 
         /// <summary>
         /// Finds a connected PinOne board, preferring the current-firmware
