@@ -123,17 +123,34 @@ namespace DirectOutput.Cab.Out.PinOne
     /// </summary>
     public static class PinOneHidCommunication
     {
-        // Must match firmware UsbHid.cpp: USB.VID(0x39F5) / USB.PID(0x9208),
-        // and the USBHIDVendor(63, true) channel's report ID
-        // (HID_REPORT_ID_VENDOR = 6) on usage page 0xFF00 (Vendor-Defined),
-        // usage 0x01 - the same constants used in the config tool's
-        // hidBoard.ts.
+        // Must match firmware UsbHid.cpp: USB.VID(0x39F5), and the
+        // USBHIDVendor(63, true) channel's report ID (HID_REPORT_ID_VENDOR
+        // = 6) on usage page 0xFF00 (Vendor-Defined), usage 0x01 - the same
+        // constants used in the config tool's hidBoard.ts.
         public const ushort VendorID = 0x39F5;
-        public const ushort ProductID = 0x9208;
+
+        // Product IDs 0x9200-0x92FF under our vendor ID are reserved for
+        // PinOne boards. The board changes its product ID with its USB
+        // mode, but the vendor output channel is the same in every mode:
+        //   0x9208  standard mode (HID gamepad)
+        //   0x9209  XInput controller mode
+        // Any product ID in the range is accepted, so firmware that
+        // introduces a new one works without a DOF update.
+        public const ushort ProductIDMask = 0xFF00;
+        public const ushort ProductIDFamily = 0x9200;
+
         public const ushort UsagePage = 0xFF00;
         public const ushort Usage = 0x01;
         public const byte ReportId = 6;
         public const int ReportSize = 64; // report ID byte + 63 payload bytes
+
+        /// <summary>
+        /// True if the product ID is in the range reserved for PinOne boards.
+        /// </summary>
+        public static bool IsPinOneProduct(ushort productID)
+        {
+            return (productID & ProductIDMask) == ProductIDFamily;
+        }
 
         /// <summary>
         /// Returns the first PinOne HID vendor device found, or null if
@@ -185,7 +202,7 @@ namespace DirectOutput.Cab.Out.PinOne
                     if (!HIDImports.HidD_GetAttributes(fp, ref attrs))
                         continue;
 
-                    if (attrs.VendorID != VendorID || attrs.ProductID != ProductID)
+                    if (attrs.VendorID != VendorID || !IsPinOneProduct(attrs.ProductID))
                         continue;
 
                     // The device exposes several HID collections (gamepad,
