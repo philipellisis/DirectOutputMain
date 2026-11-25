@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.IO.Ports;
@@ -70,24 +71,55 @@ namespace DirectOutput.Cab.Out.PinOne
 
 
         #region MinCommandIntervalMs property core parts
-        private int _MinCommandIntervalMs = 1;
+
+        /// <summary>
+        /// Gap between two packets when none is configured. The board needs about
+        /// 7 ms to read one HID report, so packets sent faster than that (the old
+        /// 1 ms default) can overflow its receive queue when a lot of effects fire
+        /// at once. Bytes are then lost in the middle of packets, which leaves
+        /// outputs stuck or locks up the board.
+        /// </summary>
+        public const int DefaultMinCommandIntervalMs = 8;
+
+        private int _MinCommandIntervalMs = DefaultMinCommandIntervalMs;
         private bool MinCommandIntervalMsSet = false;
 
         /// <summary>
-        /// Gets or sets the minimal interval between command in milliseconds (Default: 1ms).
+        /// Gets or sets the minimal interval between commands in milliseconds (Default: 8ms).
         /// </summary>
         /// <value>
-        /// The minimal interval between command in milliseconds.  The default is 1ms, which is also the minimum, since it's
-        /// the fastest that USB allows at the hardware protocol level.
+        /// The minimal interval between commands in milliseconds (1-1000). Values below 1 select the
+        /// default of 8ms, which keeps the board's receive queue from overflowing during event bursts.
         /// </value>
         public int MinCommandIntervalMs
         {
             get { return _MinCommandIntervalMs; }
             set
             {
-                _MinCommandIntervalMs = value.Limit(0, 1000);
+                int v = value.Limit(0, 1000);
+                _MinCommandIntervalMs = (v < 1 ? DefaultMinCommandIntervalMs : v);
                 MinCommandIntervalMsSet = true;
             }
+        }
+
+        #endregion
+
+        #region FullRefreshIntervalMs property
+
+        private int _FullRefreshIntervalMs = 2000;
+
+        /// <summary>
+        /// Gets or sets how often (in milliseconds) all output banks are resent while outputs
+        /// are being updated, even if they did not change (Default: 2000ms, 0 = never).
+        /// </summary>
+        /// <value>
+        /// If the board ever drops a packet, the resend corrects the lost state within this time
+        /// instead of leaving an output on until its value changes again.
+        /// </value>
+        public int FullRefreshIntervalMs
+        {
+            get { return _FullRefreshIntervalMs; }
+            set { _FullRefreshIntervalMs = value.Limit(0, 60000); }
         }
 
         #endregion
@@ -210,6 +242,16 @@ namespace DirectOutput.Cab.Out.PinOne
             // Note that, unlike the LedWiz protocol, the extended protocol
             // uses ONLY the brightness value to control each output.  There's
             // no separate on/off state.  "Off" is simply a brightness of 0.
+            // Every FullRefreshIntervalMs, make every bank look changed so the
+            // whole state is written again. This corrects any state the board
+            // lost during a burst.
+            if (FullRefreshIntervalMs > 0 && FullRefreshTimer.ElapsedMilliseconds >= FullRefreshIntervalMs)
+            {
+                for (int k = 0; k < OldOutputValues.Length && k < NewOutputValues.Length; k++)
+                    OldOutputValues[k] = (byte)~NewOutputValues[k];
+                FullRefreshTimer.Restart();
+            }
+
             byte pfx = 200;
             for (int i = 0; i < NumberOfOutputs; i += 7, ++pfx)
             {
@@ -234,6 +276,8 @@ namespace DirectOutput.Cab.Out.PinOne
                         {
                             pinOneCommunication.Write(buf);
                         }
+                        // measure the gap from the end of this write
+                        LastUpdate.Restart();
 
                         // the new values are now the current values on the device
                         Array.Copy(NewOutputValues, i, OldOutputValues, i, lim - i);
@@ -247,13 +291,35 @@ namespace DirectOutput.Cab.Out.PinOne
 
         byte[] OldOutputValues;
 
-        private DateTime LastUpdate = DateTime.Now;
+        // Stopwatch rather than DateTime.Now: DateTime.Now only has ~15 ms
+        // resolution on Windows, which is coarser than the gap being enforced.
+        private readonly Stopwatch LastUpdate = Stopwatch.StartNew();
+        private readonly Stopwatch FullRefreshTimer = Stopwatch.StartNew();
+
+        /// <summary>
+        /// Waits until at least MinCommandIntervalMs have passed since the last
+        /// packet, so a burst of events can't flood the board. DOF's updater
+        /// thread always sends the latest snapshot, so values that changed while
+        /// waiting are combined into the next packet instead of piling up.
+        /// </summary>
         private void UpdateDelay()
         {
-            int Ms = (int)DateTime.Now.Subtract(LastUpdate).TotalMilliseconds;
+            long Ms = LastUpdate.ElapsedMilliseconds;
             if (Ms < MinCommandIntervalMs)
-                Thread.Sleep((MinCommandIntervalMs - Ms).Limit(0, MinCommandIntervalMs));
-            LastUpdate = DateTime.Now;
+                Thread.Sleep((int)(MinCommandIntervalMs - Ms));
+        }
+
+        /// <summary>
+        /// Forgets what we think the board shows, so the next update resends every bank.
+        /// </summary>
+        private void InvalidateDeviceState()
+        {
+            if (OldOutputValues != null)
+            {
+                for (int k = 0; k < OldOutputValues.Length; k++)
+                    OldOutputValues[k] = 255;
+            }
+            FullRefreshTimer.Restart();
         }
 
         /// <summary>
@@ -261,6 +327,10 @@ namespace DirectOutput.Cab.Out.PinOne
         /// </summary>
         protected override void ConnectToController()
         {
+            // A new or reopened connection may not have the state we last sent
+            // (e.g. the board was reset), so resend all banks on the next update.
+            InvalidateDeviceState();
+
             if (ComPort == HidSentinel)
             {
                 lock (PortLocker)

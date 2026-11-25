@@ -116,7 +116,7 @@ namespace DirectOutput.Cab.Out.PinOne
 
         /// <summary>
         /// Looks up the COM port associated with an old-firmware PinOne
-        /// board (VID 0x0E8F / PID 0x9208) via WMI.
+        /// board (VID 0x0E8F / PID 0x9207) via WMI.
         /// </summary>
         /// <param name="wmiAvailable">False if the WMI query itself failed (as opposed to succeeding but finding no match), signaling the caller to fall back to a full port scan.</param>
         /// <returns>The COM port name (e.g. "COM5"), or "" if none was found.</returns>
